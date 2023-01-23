@@ -29,13 +29,7 @@ class DNSPackets:
             encoded_labels_string += str(len(label))
             encoded_labels_string += label
         encoded_labels_string += '00000000'
-        qname = ""
-        for char in encoded_labels_string:
-            qname += str(ord(char))
-            print(int(ord(char)).to_bytes(1, byteorder='big'))
-        print(qname)
-        qname = int(qname)
-        qname = qname.to_bytes(len(encoded_labels_string), byteorder='big')
+        qname = bytes(encoded_labels_string, 'ascii')
 
         if arguments.get("type", None) == None:
             qtype = self.bitstring_to_bytes("0000000000000001")
