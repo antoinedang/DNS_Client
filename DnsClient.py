@@ -22,8 +22,37 @@ class DNSPackets:
         arcount = '0000000000000000'
         bit_string = qr + opcode + tc + aa + rd + ra + z + rcode + qdcount + ancount + nscount + arcount
         header_bytes = msg_id + self.bitstring_to_bytes(bit_string)
-        print(str(header_bytes))
-        return None
+
+        split_labels = arguments["domain-name"].split(".")
+        encoded_labels_string = ""
+        for label in split_labels:
+            encoded_labels_string += str(len(label))
+            encoded_labels_string += label
+        encoded_labels_string += '00000000'
+        qname = ""
+        for char in encoded_labels_string:
+            qname += str(ord(char))
+            print(int(ord(char)).to_bytes(1, byteorder='big'))
+        print(qname)
+        qname = int(qname)
+        qname = qname.to_bytes(len(encoded_labels_string), byteorder='big')
+
+        if arguments.get("type", None) == None:
+            qtype = self.bitstring_to_bytes("0000000000000001")
+        elif arguments.get("type") == "mail-server":
+            qtype = self.bitstring_to_bytes("0000000000000010")
+        else:
+            qtype = self.bitstring_to_bytes("0000000000001111")
+
+        qclass = self.bitstring_to_bytes("0000000000000001")
+
+        question_bytes = qname + qtype + qclass
+
+        print(qname)
+        print(qtype)
+        print(qclass)
+        print(header_bytes + question_bytes)
+        return header_bytes + question_bytes
 
     def bitstring_to_bytes(self, s):
         return int(s, 2).to_bytes((len(s) + 7) // 8, byteorder='big')
@@ -40,15 +69,19 @@ class Socket:
 
     def send(self, msg):
         totalsent = 0
+        MSGLEN = len(msg)
         while totalsent < MSGLEN:
             sent = self.sock.send(msg[totalsent:])
             if sent == 0:
                 raise RuntimeError("socket connection broken")
+            else:
+                print("Sent " + str(sent) + " bytes.")
             totalsent = totalsent + sent
 
     def receive(self):
         chunks = []
         bytes_recd = 0
+        MSGLEN = 60000
         while bytes_recd < MSGLEN:
             chunk = self.sock.recv(min(MSGLEN - bytes_recd, 2048))
             if chunk == b'':
@@ -60,7 +93,7 @@ class Socket:
     def close(self):
         # try this if problems
         # self.socket.shutdown() 
-        self.socket.close()
+        self.sock.close()
 
 if __name__ == '__main__':
     arguments = {}
@@ -94,8 +127,8 @@ if __name__ == '__main__':
     print(request)
     socket = Socket()
 
-    socket.connect(arguments["server-name"], arguments.get("port", 53))
-    tries = 0
-    while tries < arguments.get("max-retries", 3):
-        tries += 1
-        socket.mysend(request)
+    socket.connect(arguments["server-name"], int(arguments.get("port", 53)))
+    socket.send(request)
+    response = socket.receive()
+    print(response)
+    socket.close()
