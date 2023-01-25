@@ -169,6 +169,10 @@ if __name__ == '__main__':
             else:
                 arguments["domain-name"] = arg
 
+    if "server-name" not in list(arguments.keys()) or "domain-name" not in list(arguments.keys()):
+        print("ERROR\tIncorrect input syntax: Server and domain name arguments are required.")
+        exit()
+
     dns = DNSPackets()
     request = dns.encode(arguments)
     attempts = 0
