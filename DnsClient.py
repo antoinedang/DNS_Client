@@ -1,6 +1,7 @@
 import sys
 import socket
 import random
+import time
 
 class DNSPackets:
     def __init__(self):
@@ -42,30 +43,39 @@ class DNSPackets:
 
         question_bytes = qname + qtype + qclass
 
+        print("DnsClient sending request for {}\nServer: {}\nRequest type: {}".format(arguments["domain-name"], arguments["server-name"], arguments.get("type", "A")))
+
         return header_bytes + question_bytes
 
     def bitstring_to_bytes(self, s):
         return int(s, 2).to_bytes((len(s) + 7) // 8, byteorder='big')
 
     def decode(self, packet):
-        print("DnsClient sending request for [name]\n
-Server: [server IP address]\n
-Request type: [A | MX | NS]")
-        print("Response received after [time] seconds ([num-retries] retries)")
-        if (response contains records)
-          print("***Answer Section ([num-answers] records)***")
-        if (response contains IP addresss)
-          print("IP <tab> [ip address] <tab> [seconds can cache] <tab> [auth | nonauth]")
+
+        print(str(packet))
+        print("length:" + str(len(packet)))
+        msg_id = packet[:2]
+        info = packet[2:4]
+        qdcount = packet[4:6]
+        ancount = packet[6:8]
+        nscount = packet[8:10]
+        arcount = packet[10:]
+
+        if len(packet) > 12:
+            packet_without_header = packet[12:]
+            print("***Answer Section ([num-answers] records)***")
+
+        #if (response contains IP addresss):
+        #  print("IP <tab> [ip address] <tab> [seconds can cache] <tab> [auth | nonauth]")
           
-        if (CNAME)
-          print("CNAME <tab> [alias] <tab> [seconds can cache] <tab> [auth | nonauth]")
-        if (MX)
-          print("MX <tab> [alias] <tab> [pref] <tab> [seconds can cache] <tab> [auth |
-nonauth]")
-        if (NS)
-          print("NS <tab> [alias] <tab> [seconds can cache] <tab> [auth | nonauth]")
-        if (response contains additional section)
-          print("***Additional Section ([num-additional] records)***")  
+        #if (CNAME):
+        #  print("CNAME <tab> [alias] <tab> [seconds can cache] <tab> [auth | nonauth]")
+        #if (MX):
+        #  print("MX <tab> [alias] <tab> [pref] <tab> [seconds can cache] <tab> [auth | nonauth]")
+        #if (NS):
+        #  print("NS <tab> [alias] <tab> [seconds can cache] <tab> [auth | nonauth]")
+        #if (response contains additional section):
+        #  print("***Additional Section ([num-additional] records)***")  
         
 
 
@@ -86,7 +96,7 @@ class Socket:
             totalsent = totalsent + sent
 
     def receive(self):
-        chunk = self.sock.recv(2048)
+        chunk = self.sock.recv(60000)
         return b''.join([chunk])
 
     def close(self):
@@ -176,7 +186,7 @@ if __name__ == '__main__':
             if len(popByValue(popByValue(popByValue(list(arguments.keys()), "timeout"), "max-retries"), "port")) > 0:
                 print("ERROR\tIncorrect input syntax: Only timeout, max-retries, or port argument can be before MX argument.")
                 exit()
-            arguments["type"] = "mail-server"
+            arguments["type"] = "MX"
         elif arg == '-ns':
             if "type" in list(arguments.keys()):
                 print("ERROR\tIncorrect input syntax: Cannot put both -mx and -ns arguments in same command.")
@@ -184,7 +194,7 @@ if __name__ == '__main__':
             if len(popByValue(popByValue(popByValue(list(arguments.keys()), "timeout"), "max-retries"), "port")) > 0:
                 print("ERROR\tIncorrect input syntax: Only timeout, max-retries, or port argument can be before NS argument.")
                 exit()
-            arguments["type"] = "name-server"
+            arguments["type"] = "NS"
         else:
             if arguments.get("server-name", None) == None:
                 verifyIPValidity(arg)
@@ -198,14 +208,17 @@ if __name__ == '__main__':
 
     dns = DNSPackets()
     request = dns.encode(arguments)
-    attempts = 0
+    attempts = -1
     while attempts < int(arguments.get("max-retries", 3)):
         attempts += 1
         try:
             sock = Socket(float(arguments.get("timeout", 5)))
             sock.connect(arguments["server-name"], int(arguments.get("port", 53)))
             sock.send(request)
+            timeSent = time.time()
             response = sock.receive()
+            timeReceived = time.time()
+            print("Response received after {} seconds ({} retries)".format(timeReceived-timeSent, attempts))
             dns.decode(response)
             sock.close()
             exit()
