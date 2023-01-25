@@ -48,7 +48,26 @@ class DNSPackets:
         return int(s, 2).to_bytes((len(s) + 7) // 8, byteorder='big')
 
     def decode(self, packet):
-        return None
+        print("DnsClient sending request for [name]\n
+Server: [server IP address]\n
+Request type: [A | MX | NS]")
+        print("Response received after [time] seconds ([num-retries] retries)")
+        if (response contains records)
+          print("***Answer Section ([num-answers] records)***")
+        if (response contains IP addresss)
+          print("IP <tab> [ip address] <tab> [seconds can cache] <tab> [auth | nonauth]")
+          
+        if (CNAME)
+          print("CNAME <tab> [alias] <tab> [seconds can cache] <tab> [auth | nonauth]")
+        if (MX)
+          print("MX <tab> [alias] <tab> [pref] <tab> [seconds can cache] <tab> [auth |
+nonauth]")
+        if (NS)
+          print("NS <tab> [alias] <tab> [seconds can cache] <tab> [auth | nonauth]")
+        if (response contains additional section)
+          print("***Additional Section ([num-additional] records)***")  
+        
+
 
 class Socket:
     def __init__(self, timeout):
