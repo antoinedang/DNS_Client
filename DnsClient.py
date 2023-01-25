@@ -109,13 +109,17 @@ def verifyValidity(name, val):
             exit()
     elif name == "port":
         try:
-            int(val)
+            if int(val) < 1:
+                print("ERROR\tIncorrect input syntax: Port must be strictly positive.")
+                exit()
         except Exception:
             print("ERROR\tIncorrect input syntax: Port must be an integer.")
             exit()
     elif name == "max-retries":
         try:
-            int(val)
+            if int(val) < 1:
+                print("ERROR\tIncorrect input syntax: Max retries must be strictly positive.")
+                exit()
         except Exception:
             print("ERROR\tIncorrect input syntax: Max retries must be an integer.")
             exit()
@@ -189,5 +193,3 @@ if __name__ == '__main__':
         except socket.timeout:
             continue
     print("ERROR\tMaximum number of retries ({}) exceeded.".format(arguments.get("max-retries", "3")))
-
-
