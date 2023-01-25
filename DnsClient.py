@@ -2,6 +2,7 @@ import sys
 import socket
 import random
 import time
+import numpy as np
 
 class DNSPackets:
     def __init__(self):
@@ -25,12 +26,12 @@ class DNSPackets:
         header_bytes = msg_id + self.bitstring_to_bytes(bit_string)
 
         split_labels = arguments["domain-name"].split(".")
-        encoded_labels_string = ""
+        qname = bytes()
         for label in split_labels:
-            encoded_labels_string += str(len(label))
-            encoded_labels_string += label
-        encoded_labels_string += '00000000'
-        qname = bytes(encoded_labels_string, 'ascii')
+            qname += int(len(label)).to_bytes(1, byteorder='big')
+            for character in label:
+                qname += int(ord(character)).to_bytes(1, byteorder='big')
+        qname += int(0).to_bytes(1, byteorder='big')
 
         if arguments.get("type", None) == None:
             qtype = self.bitstring_to_bytes("0000000000000001")
@@ -44,11 +45,13 @@ class DNSPackets:
         question_bytes = qname + qtype + qclass
 
         print("DnsClient sending request for {}\nServer: {}\nRequest type: {}".format(arguments["domain-name"], arguments["server-name"], arguments.get("type", "A")))
-
         return header_bytes + question_bytes
 
     def bitstring_to_bytes(self, s):
         return int(s, 2).to_bytes((len(s) + 7) // 8, byteorder='big')
+
+    def andbytes(self, abytes, bbytes):
+        return bytes([a & b for a, b in zip(abytes[::-1], bbytes[::-1])][::-1])
 
     def decode(self, packet):
 
@@ -56,9 +59,30 @@ class DNSPackets:
         print("length:" + str(len(packet)))
         msg_id = packet[:2]
         info = packet[2:4]
+        RCODE = self.andbytes(bytes(info[1]), b'\x0F')
+        AA = self.andbytes(bytes(info[0]), b'\x04')
+        RA = self.andbytes(bytes(info[1]), b'\x80')
+        if int.from_bytes(RA, byteorder='big') == 0:
+            print("ERROR\tRecursion Unsupported: the name server does not support recursive queries.")
+
+        if int.from_bytes(RCODE, byteorder='big') == 1:
+            print("ERROR\tFormat Error: the name server was unable to interpret the query.")
+            exit()
+        if int.from_bytes(RCODE, byteorder='big') == 2:
+            print("ERROR\tServer failure: the name server was unable to process this query due to a problem with the name server.")
+            exit()
+        if int.from_bytes(RCODE, byteorder='big') == 3:
+            print("NOTFOUND")
+            exit()
+        if int.from_bytes(RCODE, byteorder='big') == 4:
+            print("ERROR\tNot implemented: the name server does not support the requested kind of query.")
+            exit()
+        if int.from_bytes(RCODE, byteorder='big') == 5:
+            print("ERROR\tRefused: the name server refuses to perform the requested operation for policy reasons.")
+            exit()
+
         qdcount = packet[4:6]
         ancount = packet[6:8]
-        nscount = packet[8:10]
         arcount = packet[10:]
 
         if len(packet) > 12:
