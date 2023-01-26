@@ -53,16 +53,81 @@ class DNSPackets:
     def andbytes(self, abytes, bbytes):
         return bytes([a & b for a, b in zip(abytes[::-1], bbytes[::-1])][::-1])
 
-    def decode(self, packet):
+    def decodeNameField(self, field, full_packet):
+        length = None
+        ignore_next_i = False
+        text = ""
+        for i in range(len(field)):
+            if ignore_next_i:
+                ignore_next_i = False
+                continue
+            c = field[i]
+            if length == None:
+                if c >= 192:
+                    pointer_offset = int.from_bytes(field[i:i+2], byteorder='big')
+                    pointer_offset -= 49152
+                    i, referenced_string = self.decodeNameField(full_packet[pointer_offset:], full_packet)
+                    text += referenced_string
+                    ignore_next_i = True
+                    continue
+                length = c
+            elif length == 0:
+                if c == 0: return i, text
+                text += "."
+                if c >= 192:
+                    pointer_offset = int.from_bytes(field[i:i+2], byteorder='big')
+                    pointer_offset -= 49152
+                    i, referenced_string = self.decodeNameField(full_packet[pointer_offset:], full_packet)
+                    text += referenced_string
+                    ignore_next_i = True
+                    continue
+                length = c
+            else:
+                length -= 1
+                text += chr(c)
+        return i, text
 
-        print(str(packet))
-        print("length:" + str(len(packet)))
+    def decodeOneRecord(self, full_packet, packet, verbose, AA):
+        #192 because 192 resolves to 1100 0000 so any number above this is a pointer
+        if packet[0] < 192: nameFieldLastIndex = packet.index(0)
+        else:
+            nameFieldLastIndex = 1
+        TYPE = packet[nameFieldLastIndex+1:nameFieldLastIndex+3] 
+        CLASS = packet[nameFieldLastIndex+3:nameFieldLastIndex+5]         
+        if int.from_bytes(CLASS, byteorder='big') != 1: print("ERROR\tUnexpected value: the CLASS field in response should be 0x0001, got {}".format(CLASS))
+        #skip over 6 bytes EITHER when it is first record OR when there is a pointer in the name
+        if packet[0] < 192: nameFieldLastIndex += 6
+        TTL = packet[nameFieldLastIndex+5:nameFieldLastIndex+9]
+        RDLENGTH = int.from_bytes(packet[nameFieldLastIndex+9:nameFieldLastIndex+11], byteorder='big')
+        rdataFirstIndex = nameFieldLastIndex+11
+        RDATA = packet[rdataFirstIndex:rdataFirstIndex+RDLENGTH]
+        if int.from_bytes(AA, byteorder='big') == 1: auth = "auth"
+        else: auth = "nonauth"
+        if TYPE[1] == 1:
+            ip = ""
+            for n in RDATA:
+                ip += str(n) + "."
+            if verbose: print("IP\t{}\t{}\t{}".format(ip[:-1], int.from_bytes(TTL, byteorder='big'), auth))
+        elif TYPE[1] == 5:  
+            i, alias = self.decodeNameField(RDATA, full_packet)
+            if verbose: print("CNAME\t{}\t{}\t{}".format(alias, TTL, auth))
+        elif TYPE[1] == 15 :
+            pref = RDATA[:2]
+            exchange = RDATA[2:]
+            i, alias = self.decodeNameField(exchange, full_packet)
+            if verbose: print("MX\t{}\t{}\t{}\t{}".format(alias, int.from_bytes(pref, byteorder='big'), int.from_bytes(TTL, byteorder='big'), auth))
+        elif TYPE[1] == 2:
+            i, alias = self.decodeNameField(RDATA, full_packet)
+            if verbose: print("NS\t{}\t{}\t{}".format(alias, int.from_bytes(TTL, byteorder='big'), auth))
+        return packet[rdataFirstIndex+RDLENGTH:]
+
+    def decode(self, packet):
         msg_id = packet[:2]
         info = packet[2:4]
         RCODE = self.andbytes(bytes(info[1]), b'\x0F')
         AA = self.andbytes(bytes(info[0]), b'\x04')
         RA = self.andbytes(bytes(info[1]), b'\x80')
-        if int.from_bytes(RA, byteorder='big') == 0:
+        if int.from_bytes(RA, byteorder='big') == 1:
             print("ERROR\tRecursion Unsupported: the name server does not support recursive queries.")
 
         if int.from_bytes(RCODE, byteorder='big') == 1:
@@ -83,35 +148,27 @@ class DNSPackets:
 
         qdcount = packet[4:6]
         ancount = packet[6:8]
-        arcount = packet[10:]
+        nscount = packet[8:10]
+        arcount = packet[10:12]
+        packet_without_header = packet[12:]
 
-        if len(packet) > 12:
-            packet_without_header = packet[12:]
-            print(packet_without_header)
-            print("***Answer Section ([num-answers] records)***")
-            indexZeroByte = packet_without_header.index(0)
-            TYPE = packet_without_header[indexZeroByte+1:indexZeroByte+3]
-            print("TYPE: {}".format(TYPE))
+        if int.from_bytes(ancount, byteorder='big') > 0 or int.from_bytes(arcount, byteorder='big') > 0:
+            if (int.from_bytes(ancount, byteorder='big') > 0):
+                print("***Answer Section ({} record(s))***".format(int.from_bytes(ancount, byteorder='big')))
+                for i in range(int.from_bytes(ancount, byteorder='big')):
+                    packet_without_header = self.decodeOneRecord(packet, packet_without_header, True, AA)
+
+            if (int.from_bytes(nscount, byteorder='big') > 0):
+                for i in range(int.from_bytes(nscount, byteorder='big')):
+                    packet_without_header = self.decodeOneRecord(packet, packet_without_header, False, AA)
+
+            if (int.from_bytes(arcount, byteorder='big') > 0):
+                print("***Additional Section ({} record(s))***".format(int.from_bytes(arcount, byteorder='big')))
+                for i in range(int.from_bytes(arcount, byteorder='big')):
+                    packet_without_header = self.decodeOneRecord(packet, packet_without_header, True, AA)
+        else:
+            print("NOTFOUND")
             
-            
-            TTL = packet_without_header[indexZeroByte+5:indexZeroByte+9]
-            rdataFirstIndex = indexZeroByte+11
-            #TODO NEED TO CONVERT TTL FROM ARRAY OF 4 BYTES INTO ONE INTEGER
-            RDLENGTH = packet_without_header[indexZeroByte+9:indexZeroByte+11]
-            print("RDLENGTH: {}".format(RDLENGTH))
-            if TYPE[1] == 1:
-              RDATA = packet_without_header[rdataFirstIndex:rdataFirstIndex+4]
-              print(RDATA)
-              print("IP \t {} \t {} \t [auth | nonauth]".format(RDATA, TTL))
-            if TYPE[1] == 5:  
-              print("CNAME \t {} \t {} \t [auth | nonauth]".format(RDATA, TTL))
-            if TYPE[1] == 15 :
-              pref = packet_without_header[rdataFirstIndex:rdataFirstIndex+2]
-              print("MX \t [alias] \t {} \t {} \t [auth | nonauth]".format(pref, TTL))
-            if TYPE[1] == 2:
-              print("NS \t [alias] \t {} \t [auth | nonauth]".format(TTL))
-            #if (response contains additional section):
-             # print("***Additional Section ([num-additional] records)***")
 
 class Socket:
     def __init__(self, timeout):
@@ -146,7 +203,7 @@ def popByValue(l, val):
         return l
 
 def verifyIPValidity(ip):
-    if "@" not in ip:
+    if ip[0] != "@":
         print("ERROR\tIncorrect input syntax: IP Address must begin with @ character.")
         exit()
     elif len(ip.split(".")) != 4:
