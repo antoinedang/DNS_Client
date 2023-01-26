@@ -2,7 +2,7 @@ import sys
 import socket
 import random
 import time
-import numpy as np
+#import numpy as np
 
 class DNSPackets:
     def __init__(self):
@@ -87,21 +87,31 @@ class DNSPackets:
 
         if len(packet) > 12:
             packet_without_header = packet[12:]
+            print(packet_without_header)
             print("***Answer Section ([num-answers] records)***")
-
-        #if (response contains IP addresss):
-        #  print("IP <tab> [ip address] <tab> [seconds can cache] <tab> [auth | nonauth]")
-          
-        #if (CNAME):
-        #  print("CNAME <tab> [alias] <tab> [seconds can cache] <tab> [auth | nonauth]")
-        #if (MX):
-        #  print("MX <tab> [alias] <tab> [pref] <tab> [seconds can cache] <tab> [auth | nonauth]")
-        #if (NS):
-        #  print("NS <tab> [alias] <tab> [seconds can cache] <tab> [auth | nonauth]")
-        #if (response contains additional section):
-        #  print("***Additional Section ([num-additional] records)***")  
-        
-
+            indexZeroByte = packet_without_header.index(0)
+            TYPE = packet_without_header[indexZeroByte+1:indexZeroByte+3]
+            print("TYPE: {}".format(TYPE))
+            
+            
+            TTL = packet_without_header[indexZeroByte+5:indexZeroByte+9]
+            rdataFirstIndex = indexZeroByte+11
+            #TODO NEED TO CONVERT TTL FROM ARRAY OF 4 BYTES INTO ONE INTEGER
+            RDLENGTH = packet_without_header[indexZeroByte+9:indexZeroByte+11]
+            print("RDLENGTH: {}".format(RDLENGTH))
+            if TYPE[1] == 1:
+              RDATA = packet_without_header[rdataFirstIndex:rdataFirstIndex+4]
+              print(RDATA)
+              print("IP \t {} \t {} \t [auth | nonauth]".format(RDATA, TTL))
+            if TYPE[1] == 5:  
+              print("CNAME \t {} \t {} \t [auth | nonauth]".format(RDATA, TTL))
+            if TYPE[1] == 15 :
+              pref = packet_without_header[rdataFirstIndex:rdataFirstIndex+2]
+              print("MX \t [alias] \t {} \t {} \t [auth | nonauth]".format(pref, TTL))
+            if TYPE[1] == 2:
+              print("NS \t [alias] \t {} \t [auth | nonauth]".format(TTL))
+            #if (response contains additional section):
+             # print("***Additional Section ([num-additional] records)***")
 
 class Socket:
     def __init__(self, timeout):
