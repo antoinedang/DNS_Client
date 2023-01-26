@@ -286,6 +286,9 @@ if __name__ == '__main__':
                 print("ERROR\tIncorrect input syntax: Only timeout, max-retries, or port argument can be before NS argument.")
                 exit()
             arguments["type"] = "NS"
+        elif "-" == arg[0]:
+            print("ERROR\tIncorrect input syntax: Argument '{}' unsupported.".format(arg))
+            exit()
         else:
             if arguments.get("server-name", None) == None:
                 verifyIPValidity(arg)
